@@ -4,7 +4,7 @@ from pathlib import Path
 import urllib.parse
 import requests
 from tqdm import tqdm
-from constants.model_constants import SINGLE_LINE_FILES
+from .constants.model_constants import SINGLE_LINE_FILES
 
 
 class AugmatrixUploader:
