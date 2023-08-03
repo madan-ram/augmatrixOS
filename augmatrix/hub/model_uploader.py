@@ -11,15 +11,15 @@ class AugmatrixUploader:
     def __init__(self, file_path):
         self.token = os.environ.get("AUGMATRIX_TOKEN")
         self.base_url = os.environ.get("AUGMATRIX_API_URL")
-        self.experiment_name = os.environ.get("EXPERIMENT_NAME")
+        self.mlflow_experiment_name = os.environ.get("MLFLOW_EXPERIMENT_NAME")
         self.model_name = os.environ.get("SELECTED_MODEL_NAME")
         self.pipeline_tag = os.environ.get("PIPELINE_NAME")
 
         if self.token is None:
             raise ValueError("AGUMATRIX_TOKEN environment variable not set.")
 
-        if self.experiment_name is None:
-            raise ValueError("experiment_name is not set")
+        if self.mlflow_experiment_name is None:
+            raise ValueError("mlflow_experiment_name is not set")
 
         if self.model_name is None:
             raise ValueError("model is not set")
@@ -97,7 +97,7 @@ class AugmatrixUploader:
             headers = {"Authorization": f"Token {self.token}"}
 
             data = {
-                "experiment_name": self.experiment_name,
+                "mlflow_experiment_name": self.mlflow_experiment_name,
                 "selected_model_name": self.model_name,
                 "model_metrics": sending_binary_data,
                 "pipeline_tag": self.pipeline_tag,
@@ -145,7 +145,7 @@ class AugmatrixUploader:
                     "Authorization": f"Token {self.token}",
                 }
                 data = {
-                    "experiment_name": self.experiment_name,
+                    "mlflow_experiment_name": self.mlflow_experiment_name,
                     "selected_model_name": self.model_name,
                     "pipeline_tag": self.pipeline_tag,
                     "chunk_number": chunk_number,
