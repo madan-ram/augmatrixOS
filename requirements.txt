@@ -1,4 +1,4 @@
 scikit-learn
 tqdm
 datasets
-azure-storage-blob -U
+azure-storage-blob
