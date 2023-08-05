@@ -6,7 +6,7 @@ import requests
 import hashlib
 from azure.storage.blob import BlobClient
 from tqdm import tqdm
-from constants.model_constants import SINGLE_LINE_FILES
+from .constants.model_constants import SINGLE_LINE_FILES
 
 
 class AugmatrixUploader:
