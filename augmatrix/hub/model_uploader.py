@@ -3,8 +3,10 @@ import json
 from pathlib import Path
 import urllib.parse
 import requests
+import hashlib
+from azure.storage.blob import BlobClient
 from tqdm import tqdm
-from .constants.model_constants import SINGLE_LINE_FILES
+from constants.model_constants import SINGLE_LINE_FILES
 
 
 class AugmatrixUploader:
@@ -109,83 +111,63 @@ class AugmatrixUploader:
                 data=data,
                 stream=True,
             )
-
+            recive_data = response.content
+            status = recive_data.decode("utf-8")
             if response.status_code != 200:
                 print("Error sending chunk. Status code:", response.status_code)
-
-            print("Merics uploaded successfully")
+            elif "permission denied" in status:
+                print("permission denied")
+            else:
+                print("Merics uploaded successfully")
 
         except UnicodeDecodeError as e:
             print("Directory not found:", e)
 
-    def artifacts_binary_data_generator(self, file_path):
-        with open(file_path, "rb") as file:
-            chunk_size = 2000 * 1024 * 1024
-            while True:
-                data_chunk = file.read(chunk_size)
-                if len(data_chunk) == 0:
-                    break
-                yield ("file", (file_path, data_chunk))
+    def send_the_file(self, file_name):
+        headers = {
+            "Authorization": f"Token {self.token}",
+        }
+        data = {
+            "mlflow_experiment_name": self.mlflow_experiment_name,
+            "selected_model_name": self.model_name,
+            "pipeline_tag": self.pipeline_tag,
+            "file_name": str(file_name),
+        }
+        response = requests.post(
+            self.upload_url,
+            headers=headers,
+            data=data,
+            stream=True,
+        )
+        recive_data = response.content
+        return recive_data.decode("utf-8")
 
     def push_to_hub(self):
         try:
+            sha256 = hashlib.sha256()
+            print("uploading files")
             if os.path.isdir(self.file_path):
-                total_uploaded_size = 0
-                total_file_size = 0
-                total_chunks = 0
-                chunk_number = 1
-
                 for root, _, files in os.walk(self.file_path):
                     for filename in files:
-                        file_path = os.path.join(root, filename)
-                        total_file_size += os.path.getsize(file_path)
-                        total_chunks += 1
+                        received_data = self.send_the_file(filename)
+                        received_upload_data = json.loads(received_data)
+                        if received_upload_data["message"] == "Success":
+                            received_url = received_upload_data[
+                                "sending_model_upload_url"
+                            ]
+                            received_file_name = received_upload_data["file_name"]
+                            model_output_file_path = os.path.join(
+                                root, received_file_name
+                            )
+                            print(f"{received_file_name} file uploading")
+                            blob_client = BlobClient.from_blob_url(received_url["url"])
+                            with open(model_output_file_path, "rb") as data:
+                                blob_client.upload_blob(data, overwrite=True)
+                            # if str(response.status_code).startswith('20'):
+                            #     print(f"Upload failed with status code {response.status_code}")
+                        else:
+                            print("permission denied")
+                            break
 
-                headers = {
-                    "Authorization": f"Token {self.token}",
-                }
-                data = {
-                    "mlflow_experiment_name": self.mlflow_experiment_name,
-                    "selected_model_name": self.model_name,
-                    "pipeline_tag": self.pipeline_tag,
-                    "chunk_number": chunk_number,
-                }
-                chunk_size = 5 * 1024 * 1024
-                num_iterations = (total_file_size + chunk_size - 1) // chunk_size
-                with tqdm(
-                    total=total_file_size, desc="Uploading directory", unit="B"
-                ) as pbar:
-                    for root, _, files in os.walk(self.file_path):
-                        for filename in files:
-                            file_path = os.path.join(root, filename)
-
-                            with open(file_path, "rb") as f:
-                                while True:
-                                    chunk = f.read(chunk_size)
-                                    if not chunk:
-                                        break
-                                    response = requests.post(
-                                        self.upload_url,
-                                        files=self.artifacts_binary_data_generator(
-                                            file_path
-                                        ),
-                                        headers=headers,
-                                        data=data,
-                                        stream=True,
-                                    )
-                                    total_uploaded_size += len(chunk)
-                                    pbar.update(len(chunk))
-                                    chunk_number = chunk_number + 1
-
-                                    if response.status_code != 200:
-                                        print(
-                                            "Error sending chunk. Status code:",
-                                            response.status_code,
-                                        )
-
-                print(
-                    f"Total uploaded size: {total_uploaded_size}/{total_file_size} bytes"
-                )
-
-        except FileNotFoundError:
-            print("Directory not found:", self.file_path)
+        except Exception as e:
+            print("An error occurred:", str(e))
