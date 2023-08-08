@@ -1,9 +1,11 @@
 import os
 import json
-from pathlib import Path
 import urllib.parse
 import requests
 import hashlib
+import base64
+
+from pathlib import Path
 from azure.storage.blob import BlobClient
 from tqdm import tqdm
 from .constants.model_constants import SINGLE_LINE_FILES
@@ -31,6 +33,9 @@ class AugmatrixUploader:
         )
         self.model_metrics_url = urllib.parse.urljoin(
             self.base_url, "api/auth_upload_model_metrics/"
+        )
+        self.output_MD5keys_url = urllib.parse.urljoin(
+            self.base_url, "api/auth_upload_model_MD5Hash/"
         )
         self.file_path = file_path
 
@@ -142,7 +147,25 @@ class AugmatrixUploader:
         recive_data = response.content
         return recive_data.decode("utf-8")
 
+    def send_the_md5Hash(self, hash_keys):
+        headers = {
+            "Authorization": f"Token {self.token}",
+        }
+        data = {
+            "mlflow_experiment_name": self.mlflow_experiment_name,
+            "selected_model_name": self.model_name,
+            "pipeline_tag": self.pipeline_tag,
+            "hash_keys": json.dumps(hash_keys),
+        }
+        response = requests.post(
+            self.output_MD5keys_url,
+            headers=headers,
+            data=data,
+            stream=True,
+        )
+
     def push_to_hub(self):
+        model_ouput_file_hash_keys = {}
         try:
             print("uploading files")
             if os.path.isdir(self.file_path):
@@ -160,13 +183,19 @@ class AugmatrixUploader:
                             )
                             print(f"{received_file_name} file uploading")
                             blob_client = BlobClient.from_blob_url(received_url["url"])
-                            with open(model_output_file_path, "rb") as data:
-                                blob_client.upload_blob(data, overwrite=True)
-                            # if str(response.status_code).startswith('20'):
-                            #     print(f"Upload failed with status code {response.status_code}")
+                            with open(model_output_file_path, "rb") as d_file:
+                                blob_client.upload_blob(d_file, overwrite=True)
+                                d_file.seek(0)
+                                hash_data = d_file.read()
+                                md5_hash_id = base64.b64encode(
+                                    hashlib.md5(hash_data).digest()
+                                ).decode("utf-8")
+                                model_ouput_file_hash_keys[
+                                    received_file_name
+                                ] = md5_hash_id
                         else:
                             print("permission denied")
                             break
-
+                self.send_the_md5Hash(model_ouput_file_hash_keys)
         except Exception as e:
             print("An error occurred:", str(e))
