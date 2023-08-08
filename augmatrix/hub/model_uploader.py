@@ -144,7 +144,6 @@ class AugmatrixUploader:
 
     def push_to_hub(self):
         try:
-            sha256 = hashlib.sha256()
             print("uploading files")
             if os.path.isdir(self.file_path):
                 for root, _, files in os.walk(self.file_path):
